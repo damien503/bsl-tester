@@ -160,6 +160,35 @@
     .gloss-row, .gloss-header { grid-template-columns: 46px 1fr 60px; }
     .gloss-eng { display: none; }
   }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin: 20px 0 16px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 16px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: -1px; transition: all 0.2s; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text); }
+
+  /* Gauges */
+  .gauges { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+  .gauge { }
+  .gauge-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .gauge-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .gauge-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 24px; }
+  .gauge-bar-bg { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .gauge-bar-fill { height: 100%; border-radius: 3px; transition: width 0.7s ease; }
+
+  /* Key moments */
+  .moment-row { display: grid; grid-template-columns: 48px 90px 70px 1fr; gap: 10px; align-items: start; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 4px; font-size: 12px; }
+  .moment-ts { color: var(--muted); font-size: 11px; }
+  .moment-dim { font-size: 10px; padding: 2px 7px; border-radius: 2px; text-align: center; }
+  .dim-autonomy { background: #1a1640; color: #7c6cff; }
+  .dim-competence { background: #0a1f12; color: var(--green); }
+  .dim-relatedness { background: #1a1500; color: var(--amber); }
+  .moment-impact { font-size: 10px; padding: 2px 7px; border-radius: 2px; text-align: center; }
+  .impact-positive { background: #0a1f12; color: var(--green); }
+  .impact-negative { background: #1f0a0a; color: var(--red); }
+  .impact-neutral { background: var(--border); color: var(--muted); }
+  .moment-desc { color: var(--text); line-height: 1.5; }
+
 </style>
 </head>
 <body>
@@ -234,6 +263,40 @@
 }
 
 Be honest about uncertainty. Do not hallucinate signs that are not clearly visible.`;
+
+
+  const SDT_PROMPT = `You are an expert in Self-Determination Theory (SDT) by Deci & Ryan, analysing a video interaction between a TUTOR and a PARTICIPANT. Both may be using BSL or Makaton.
+
+Assess how the TUTOR's behaviour impacts the PARTICIPANT's three basic psychological needs. Score 0-10 for each.
+
+1. AUTONOMY — participant feeling volitional and self-directed
+   - Choice-giving vs controlling language or signing
+   - Tutor listening and acknowledging participant's perspective
+   - Participant showing ownership, initiative, self-expression
+
+2. COMPETENCE — participant feeling effective and capable
+   - Specific praise, recognising skills, highlighting progress
+   - Scaffolding vs criticising or taking over
+   - Participant confidence in posture, signing fluency, turn-taking
+
+3. RELATEDNESS — participant feeling connected and cared for
+   - Warmth and genuine interest from the tutor
+   - Mirroring, synchronised body language
+   - Humour, shared references, personal connection
+
+Return ONLY valid JSON, no markdown:
+{
+  "sdtScores": { "autonomy": 7.5, "competence": 6.0, "relatedness": 8.0 },
+  "sdtNotes": {
+    "autonomy": "explanation...",
+    "competence": "explanation...",
+    "relatedness": "explanation..."
+  },
+  "keyMoments": [
+    { "time": 12, "description": "...", "dimension": "autonomy", "impact": "positive" }
+  ],
+  "chunkSummary": "brief narrative of this segment"
+}`;
 
   const SYNTHESIS_PROMPT = `You are a BSL and Makaton specialist. You have received chunked sign observations from a video. Merge, deduplicate, and synthesise them into a final structured transcription.
 
@@ -373,7 +436,7 @@ Return ONLY valid JSON, no markdown:
     card.className = 'result-card';
     card.innerHTML = `
       <div class="result-header">
-        <div class="result-name">Claude — Dense Frames + BSL Specialist</div>
+        <div class="result-name">Claude — BSL + SDT Analysis</div>
         <div class="result-status status-running" id="r-status">Starting…</div>
       </div>
       <div class="result-body" id="r-body">
@@ -489,9 +552,38 @@ Return ONLY valid JSON, no markdown:
       }
       console.log('Final glossSequence sample:', JSON.stringify(finalResult.glossSequence?.slice(0,2)));
 
+      setProgress(100, 'BSL complete — starting SDT analysis…');
+
+      // ── SDT Analysis ──────────────────────────────────────────────
+      const sdtChunks = [];
+      for (let i = 0; i < frames.length; i += FRAMES_PER_CHUNK) {
+        sdtChunks.push({ frames: frames.slice(i, i + FRAMES_PER_CHUNK), timestamps: timestamps.slice(i, i + FRAMES_PER_CHUNK) });
+      }
+
+      const sdtSegments = [];
+      for (let i = 0; i < sdtChunks.length; i++) {
+        const pct = Math.round((i / sdtChunks.length) * 90);
+        setProgress(pct, `SDT analysis: chunk ${i + 1} of ${sdtChunks.length}…`);
+        if (i > 0) {
+          for (let s = CHUNK_DELAY_MS / 1000; s > 0; s--) {
+            setProgress(pct, `Waiting ${s}s…`);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+        try {
+          const sdtResult = await callAPI(sdtChunks[i].frames, sdtChunks[i].timestamps, SDT_PROMPT, i, sdtChunks.length);
+          sdtSegments.push({ startTime: sdtChunks[i].timestamps[0], endTime: sdtChunks[i].timestamps[sdtChunks[i].timestamps.length - 1], ...sdtResult });
+        } catch(e) {
+          console.error('SDT chunk error:', e.message);
+        }
+      }
+
+      // Synthesise SDT scores
+      const sdtResult = synthesiseSDT(sdtSegments);
+
       setProgress(100, 'Complete');
       setStatus('done', `Done — ${finalResult.glossSequence?.length || 0} signs`);
-      renderResult(finalResult, frames.length);
+      renderResult(finalResult, sdtResult, frames.length);
       btn.disabled = false;
       btn.textContent = 'Run Again';
 
@@ -503,46 +595,95 @@ Return ONLY valid JSON, no markdown:
     }
   });
 
-  function renderResult(result, frameCount) {
+  function synthesiseSDT(segments) {
+    if (!segments.length) return null;
+    const avg = key => segments.filter(s => s.sdtScores).reduce((sum, s) => sum + (s.sdtScores[key] || 0), 0) / segments.filter(s => s.sdtScores).length;
+    const keyMoments = segments.flatMap(s => s.keyMoments || []);
+    const notes = { autonomy: '', competence: '', relatedness: '' };
+    segments.forEach(s => { if (s.sdtNotes) { ['autonomy','competence','relatedness'].forEach(k => { if (s.sdtNotes[k]) notes[k] += (notes[k] ? ' ' : '') + s.sdtNotes[k]; }); } });
+    const summaries = segments.map(s => s.chunkSummary).filter(Boolean).join(' ');
+    return {
+      overallScores: { autonomy: avg('autonomy'), competence: avg('competence'), relatedness: avg('relatedness') },
+      notes,
+      keyMoments,
+      summary: summaries,
+      segments
+    };
+  }
+
+  function renderResult(result, sdtResult, frameCount) {
     const glosses = result.glossSequence || [];
     const highConf = glosses.filter(g => g.confidence === 'high').length;
-    const t0 = performance.now();
+    const sdt = sdtResult;
+    const scores = sdt?.overallScores || {};
+
+    const gauge = (label, value, color) => {
+      const pct = Math.round((value / 10) * 100);
+      return `<div class="gauge">
+        <div class="gauge-top"><span class="gauge-label">${label}</span><span class="gauge-value" style="color:${color}">${value.toFixed(1)}</span></div>
+        <div class="gauge-bar-bg"><div class="gauge-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      </div>`;
+    };
 
     document.getElementById('r-body').innerHTML = `
       <div class="stats-row">
         <div class="stat"><div class="stat-label">Signs detected</div><div class="stat-value green">${glosses.length}</div></div>
         <div class="stat"><div class="stat-label">High confidence</div><div class="stat-value ${highConf > 0 ? 'green' : 'amber'}">${highConf}</div></div>
         <div class="stat"><div class="stat-label">Frames analysed</div><div class="stat-value">${frameCount}</div></div>
+        ${scores.autonomy !== undefined ? `<div class="stat"><div class="stat-label">SDT Overall</div><div class="stat-value amber">${(((scores.autonomy||0)+(scores.competence||0)+(scores.relatedness||0))/3).toFixed(1)}</div></div>` : ''}
       </div>
 
-      ${result.fullTranscription ? `
-        <div class="section-label">Full Transcription</div>
-        <div class="text-block">${escHtml(result.fullTranscription)}</div>
-      ` : ''}
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('bsl',this)">BSL Transcription</button>
+        <button class="tab" onclick="showTab('sdt',this)">SDT Analysis</button>
+      </div>
 
-      ${glosses.length > 0 ? `
-        <div class="section-label" style="margin-top:20px">Sign Observations</div>
-        <div class="gloss-header"><span>Time</span><span>BSL Gloss</span><span>English</span><span>Conf</span></div>
-        <div class="gloss-timeline">
-          ${glosses.map(g => `
-            <div class="gloss-row">
-              <span class="gloss-ts">${g.time !== undefined ? formatTime(g.time) : '—'}</span>
-              <span class="gloss-sign">${escHtml(g.gloss || '—')}${g.nMFs ? `<div class="gloss-nmf">${escHtml(g.nMFs)}</div>` : ''}</span>
-              <span class="gloss-eng">${escHtml(g.translation || '—')}</span>
-              <span><span class="conf-badge conf-${g.confidence || 'low'}">${g.confidence || '?'}</span></span>
-            </div>`).join('')}
-        </div>
-      ` : '<div class="empty-state">No signs detected — check video quality and signer visibility</div>'}
+      <div id="tab-bsl">
+        ${result.fullTranscription ? `
+          <div class="section-label">Full Transcription</div>
+          <div class="text-block">${escHtml(result.fullTranscription)}</div>
+        ` : ''}
+        ${glosses.length > 0 ? `
+          <div class="section-label" style="margin-top:20px">Sign Observations</div>
+          <div class="gloss-header"><span>Time</span><span>BSL Gloss</span><span>English</span><span>Conf</span></div>
+          <div class="gloss-timeline">
+            ${glosses.map(g => `
+              <div class="gloss-row">
+                <span class="gloss-ts">${g.time !== undefined ? formatTime(g.time) : '—'}</span>
+                <span class="gloss-sign">${escHtml(g.gloss || '—')}${g.nMFs ? `<div class="gloss-nmf">${escHtml(g.nMFs)}</div>` : ''}</span>
+                <span class="gloss-eng">${escHtml(g.translation || '—')}</span>
+                <span><span class="conf-badge conf-${g.confidence || 'low'}">${g.confidence || '?'}</span></span>
+              </div>`).join('')}
+          </div>
+        ` : '<div class="empty-state">No signs detected</div>'}
+        ${result.signingNotes ? `<div class="section-label" style="margin-top:20px">Signing Notes</div><div class="notes-block">${escHtml(result.signingNotes)}</div>` : ''}
+        ${result.methodNotes ? `<div class="section-label" style="margin-top:12px">Method Notes</div><div class="notes-block">${escHtml(result.methodNotes)}</div>` : ''}
+      </div>
 
-      ${result.signingNotes ? `
-        <div class="section-label" style="margin-top:20px">Signing Notes</div>
-        <div class="notes-block">${escHtml(result.signingNotes)}</div>
-      ` : ''}
-
-      ${result.methodNotes ? `
-        <div class="section-label" style="margin-top:12px">Method Notes</div>
-        <div class="notes-block">${escHtml(result.methodNotes)}</div>
-      ` : ''}
+      <div id="tab-sdt" style="display:none">
+        ${sdt ? `
+          <div class="section-label">Overall SDT Scores</div>
+          <div class="gauges">
+            ${gauge('Autonomy', scores.autonomy || 0, '#7c6cff')}
+            ${gauge('Competence', scores.competence || 0, '#3dffb0')}
+            ${gauge('Relatedness', scores.relatedness || 0, '#ffb03d')}
+          </div>
+          ${sdt.summary ? `<div class="section-label" style="margin-top:20px">Summary</div><div class="text-block">${escHtml(sdt.summary)}</div>` : ''}
+          ${sdt.notes?.autonomy ? `<div class="section-label" style="margin-top:16px">Autonomy</div><div class="notes-block">${escHtml(sdt.notes.autonomy)}</div>` : ''}
+          ${sdt.notes?.competence ? `<div class="section-label" style="margin-top:12px">Competence</div><div class="notes-block">${escHtml(sdt.notes.competence)}</div>` : ''}
+          ${sdt.notes?.relatedness ? `<div class="section-label" style="margin-top:12px">Relatedness</div><div class="notes-block">${escHtml(sdt.notes.relatedness)}</div>` : ''}
+          ${sdt.keyMoments?.length > 0 ? `
+            <div class="section-label" style="margin-top:20px">Key Moments</div>
+            ${sdt.keyMoments.map(m => `
+              <div class="moment-row">
+                <span class="moment-ts">${formatTime(m.time || 0)}</span>
+                <span class="moment-dim dim-${m.dimension || 'autonomy'}">${m.dimension || '—'}</span>
+                <span class="moment-impact impact-${m.impact || 'neutral'}">${m.impact || '—'}</span>
+                <span class="moment-desc">${escHtml(m.description || '')}</span>
+              </div>`).join('')}
+          ` : ''}
+        ` : '<div class="empty-state">SDT analysis unavailable</div>'}
+      </div>
     `;
   }
 
@@ -553,6 +694,14 @@ Return ONLY valid JSON, no markdown:
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
+
+  function showTab(name, btn) {
+    document.getElementById('tab-bsl').style.display = name === 'bsl' ? 'block' : 'none';
+    document.getElementById('tab-sdt').style.display = name === 'sdt' ? 'block' : 'none';
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
 </script>
 </body>
 </html>
