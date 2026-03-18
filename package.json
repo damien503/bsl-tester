@@ -1,0 +1,8 @@
+{
+  "name": "bsl-transcription-lab",
+  "version": "1.0.0",
+  "description": "BSL Sign Language Transcription Tester using Claude",
+  "engines": {
+    "node": "18.x"
+  }
+}

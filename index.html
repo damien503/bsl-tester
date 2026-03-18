@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BSL Transcription Lab</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --border-bright: #2e2e4e;
+    --text: #e8e8f0;
+    --muted: #666680;
+    --accent: #7c6cff;
+    --accent-dim: #3d3680;
+    --green: #3dffb0;
+    --amber: #ffb03d;
+    --red: #ff5c7c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.5;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; position: relative; z-index: 1; }
+
+  header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+
+  .logo { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .subtitle { font-size: 11px; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 4px; }
+  .badge { font-size: 10px; padding: 4px 10px; border: 1px solid var(--accent-dim); border-radius: 3px; color: var(--accent); letter-spacing: 0.1em; }
+
+  /* Upload */
+  .upload-zone {
+    border: 1.5px dashed var(--border-bright); border-radius: 8px;
+    padding: 48px; text-align: center; cursor: pointer;
+    transition: all 0.2s; position: relative; background: var(--surface);
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: #13131f; }
+  .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-icon { font-size: 36px; margin-bottom: 12px; }
+  .upload-label { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+  .upload-hint { color: var(--muted); font-size: 12px; }
+
+  #video-preview-wrap { margin-top: 24px; display: none; }
+  #video-preview { width: 100%; max-height: 320px; border-radius: 6px; border: 1px solid var(--border); background: #000; }
+
+  .video-meta { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .meta-chip { font-size: 11px; color: var(--muted); padding: 3px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; }
+  .meta-chip span { color: var(--text); }
+
+  /* Info panel */
+  .info-panel {
+    margin-top: 20px; padding: 14px 16px;
+    background: #0f0f1a; border: 1px solid var(--accent-dim);
+    border-radius: 6px; font-size: 12px; color: var(--muted); line-height: 1.7;
+  }
+  .info-panel strong { color: var(--accent); }
+
+  /* Run button */
+  #run-btn {
+    margin-top: 24px; width: 100%; padding: 14px;
+    background: var(--accent); border: none; border-radius: 6px;
+    color: #fff; font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 15px; letter-spacing: 0.05em;
+    cursor: pointer; transition: all 0.2s;
+  }
+  #run-btn:hover:not(:disabled) { background: #9080ff; transform: translateY(-1px); }
+  #run-btn:disabled { background: var(--border-bright); color: var(--muted); cursor: not-allowed; transform: none; }
+
+  /* Results */
+  #results { margin-top: 40px; }
+
+  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .result-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .result-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; flex: 1; }
+  .result-status { font-size: 11px; padding: 3px 10px; border-radius: 3px; }
+  .status-running { background: #1a1a00; color: var(--amber); animation: pulse 1.5s infinite; }
+  .status-done { background: #0a1f12; color: var(--green); }
+  .status-error { background: #1f0a0a; color: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.5} }
+
+  .result-body { padding: 18px; }
+
+  .stats-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; min-width: 100px; }
+  .stat-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .stat-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 20px; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+
+  .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; margin-top: 20px; }
+
+  /* Gloss timeline */
+  .gloss-timeline { display: flex; flex-direction: column; gap: 2px; }
+  .gloss-row {
+    display: grid; grid-template-columns: 52px 1fr 1fr 64px;
+    gap: 10px; align-items: start;
+    padding: 8px 10px; border-radius: 4px;
+    background: var(--bg); border: 1px solid var(--border);
+    font-size: 12px; transition: background 0.15s;
+  }
+  .gloss-row:hover { background: #111120; }
+  .gloss-ts { color: var(--muted); font-size: 11px; padding-top: 1px; }
+  .gloss-sign { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.03em; }
+  .gloss-eng { color: var(--muted); }
+  .gloss-nmf { font-size: 10px; color: #9080cc; font-style: italic; }
+  .conf-badge { display: inline-block; padding: 2px 7px; border-radius: 2px; font-size: 10px; }
+  .conf-high { background: #0a1f12; color: var(--green); }
+  .conf-medium { background: #1a1500; color: var(--amber); }
+  .conf-low { background: #200a0a; color: var(--red); }
+
+  .gloss-header {
+    display: grid; grid-template-columns: 52px 1fr 1fr 64px;
+    gap: 10px; padding: 6px 10px;
+    font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em;
+  }
+
+  .text-block {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 14px; font-size: 13px; line-height: 1.8; color: var(--text);
+  }
+  .notes-block {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 12px; font-size: 12px; line-height: 1.7; color: var(--muted);
+  }
+
+  /* Progress */
+  .progress-wrap { padding: 8px 0 4px; }
+  .progress-bar-bg { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; border-radius: 2px; }
+  .progress-msg { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  .error-msg { background: #1f0a0a; border: 1px solid #3f1010; border-radius: 4px; padding: 12px; color: var(--red); font-size: 12px; }
+  .empty-state { color: var(--muted); font-size: 12px; padding: 24px 0; text-align: center; }
+
+  @media (max-width: 600px) {
+    .gloss-row, .gloss-header { grid-template-columns: 46px 1fr 60px; }
+    .gloss-eng { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="logo">BSL <span>Lab</span></div>
+      <div class="subtitle">Sign Language Transcription Tester — Claude Dense Frames</div>
+    </div>
+    <div class="badge">BETA</div>
+  </header>
+
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="video-file" accept="video/*">
+    <div class="upload-icon">⬆</div>
+    <div class="upload-label">Drop a signing video here</div>
+    <div class="upload-hint">MP4, MOV, WebM · Best results with clear signer, good lighting</div>
+  </div>
+
+  <div id="video-preview-wrap">
+    <video id="video-preview" controls></video>
+    <div class="video-meta">
+      <div class="meta-chip">Duration: <span id="meta-duration">—</span></div>
+      <div class="meta-chip">Size: <span id="meta-size">—</span></div>
+      <div class="meta-chip">Frames: <span id="meta-frames">—</span></div>
+    </div>
+  </div>
+
+  <div class="info-panel">
+    <strong>How it works:</strong> Your video is sampled at 1 frame per second (up to 60 frames). Each frame is analysed by Claude using a BSL-specialist prompt covering handshapes, non-manual features, spatial grammar, and Makaton. Results are returned as timestamped BSL glosses with English translations and confidence ratings.
+  </div>
+
+  <button id="run-btn" disabled>Upload a video to begin</button>
+
+  <div id="results"></div>
+</div>
+
+<script>
+  const API_ENDPOINT = '/api/analyze';
+
+  // Free tier safe settings
+  const FRAME_INTERVAL = 1;       // 1 frame per second
+  const MAX_FRAMES = 60;          // max 60 frames
+  const FRAMES_PER_CHUNK = 8;     // 8 frames per API call
+  const CHUNK_DELAY_MS = 12000;   // 12s between chunks
+  const FRAME_WIDTH = 640;        // px width
+  const JPEG_QUALITY = 0.85;
+
+  const BSL_PROMPT = `You are a specialist in British Sign Language (BSL) and Makaton, with deep knowledge of BSL phonology, morphology, and grammar. Your task is to produce an accurate transcription of signing in the provided video frames.
+
+## YOUR EXPERTISE COVERS
+- BSL handshapes (A–Y, plus compounds), orientations, locations, and movements
+- Non-manual features (NMFs): facial grammar, mouth patterns, eye gaze, head nods/tilts
+- BSL-specific grammatical structures: topic-comment, spatial grammar, role shift, constructed action
+- Makaton core vocabulary and programme signs
+- The distinction between BSL (its own language) and Signed Supported English
+
+## APPROACH
+1. First establish the signing space and baseline posture from early frames
+2. Track each hand independently — dominant (usually right) and non-dominant
+3. Identify sign boundaries from movement holds and transitions
+4. Look for: handshape → location → movement → orientation (HLMO) for each sign
+5. Note NMFs — these are grammatically critical in BSL
+6. Produce output as BSL glosses (CAPITALS) then provide an English translation
+
+## OUTPUT — return ONLY valid JSON, no markdown, no preamble:
+{
+  "glossSequence": [
+    { "time": 1.0, "gloss": "HELLO", "translation": "Hello", "confidence": "high", "nMFs": "smile, eye contact", "notes": "open B hand, wave" }
+  ],
+  "chunkNotes": "brief observation about this segment"
+}
+
+Be honest about uncertainty. Do not hallucinate signs that are not clearly visible.`;
+
+  const SYNTHESIS_PROMPT = `You are a BSL and Makaton specialist. You have received chunked sign observations from a video. Merge, deduplicate, and synthesise them into a final structured transcription.
+
+Return ONLY valid JSON, no markdown:
+{
+  "glossSequence": [...all merged signs...],
+  "fullTranscription": "fluent English translation of full interaction",
+  "signingNotes": "observations on style, fluency, register, BSL vs Makaton",
+  "methodNotes": "confidence summary and any limitations"
+}`;
+
+  let videoFile = null;
+  let videoDuration = 0;
+
+  // Drag and drop
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('video-file');
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) loadVideo(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadVideo(fileInput.files[0]); });
+
+  function loadVideo(file) {
+    videoFile = file;
+    const url = URL.createObjectURL(file);
+    const wrap = document.getElementById('video-preview-wrap');
+    const vid = document.getElementById('video-preview');
+    vid.src = url;
+    wrap.style.display = 'block';
+    document.getElementById('meta-size').textContent = (file.size / 1024 / 1024).toFixed(1) + ' MB';
+    vid.addEventListener('loadedmetadata', () => {
+      videoDuration = vid.duration;
+      document.getElementById('meta-duration').textContent = formatTime(vid.duration);
+      const estFrames = Math.min(MAX_FRAMES, Math.floor(vid.duration / FRAME_INTERVAL));
+      document.getElementById('meta-frames').textContent = `~${estFrames} frames`;
+      const btn = document.getElementById('run-btn');
+      btn.disabled = false;
+      btn.textContent = `Analyse with Claude BSL Specialist`;
+    }, { once: true });
+  }
+
+  // Frame extraction
+  function extractFrames(file) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.src = URL.createObjectURL(file);
+      video.addEventListener('loadedmetadata', async () => {
+        const duration = video.duration;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = FRAME_WIDTH;
+        canvas.height = Math.round(FRAME_WIDTH * (video.videoHeight / video.videoWidth));
+
+        const allTs = [];
+        for (let t = 0; t < duration; t += FRAME_INTERVAL) allTs.push(t);
+        const selected = allTs.length > MAX_FRAMES
+          ? allTs.filter((_, i) => i % Math.ceil(allTs.length / MAX_FRAMES) === 0).slice(0, MAX_FRAMES)
+          : allTs;
+
+        const frames = [], timestamps = [];
+        for (const ts of selected) {
+          await seekTo(video, ts);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          frames.push(canvas.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1]);
+          timestamps.push(ts);
+        }
+        resolve({ frames, timestamps, duration });
+      });
+      video.addEventListener('error', reject);
+    });
+  }
+
+  function seekTo(video, time) {
+    return new Promise(r => { video.currentTime = time; video.addEventListener('seeked', r, { once: true }); });
+  }
+
+  // API call
+  async function callAPI(frames, timestamps, systemPrompt, chunkIndex, totalChunks) {
+    const content = [];
+    content.push({
+      type: 'text',
+      text: `Analyse these ${frames.length} video frames (chunk ${chunkIndex + 1} of ${totalChunks}, 1 frame/sec) for BSL/Makaton signing. Video total duration: ${videoDuration.toFixed(1)}s`
+    });
+    for (let i = 0; i < frames.length; i++) {
+      content.push({ type: 'text', text: `\nFrame at ${formatTime(timestamps[i])}:` });
+      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: frames[i] } });
+    }
+    content.push({ type: 'text', text: '\nReturn your JSON analysis now.' });
+
+    const resp = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`API error ${resp.status}: ${err.slice(0, 300)}`);
+    }
+    const data = await resp.json();
+    const text = data.content.map(b => b.text || '').join('');
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    try { return JSON.parse(cleaned); }
+    catch {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) return JSON.parse(match[0]);
+      throw new Error('Could not parse response JSON');
+    }
+  }
+
+  // Main run
+  document.getElementById('run-btn').addEventListener('click', async () => {
+    if (!videoFile) return;
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = '';
+
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.innerHTML = `
+      <div class="result-header">
+        <div class="result-name">Claude — Dense Frames + BSL Specialist</div>
+        <div class="result-status status-running" id="r-status">Starting…</div>
+      </div>
+      <div class="result-body" id="r-body">
+        <div class="progress-wrap">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="r-progress" style="width:0%"></div></div>
+          <div class="progress-msg" id="r-msg">Extracting frames…</div>
+        </div>
+      </div>`;
+    resultsDiv.appendChild(card);
+
+    const setProgress = (pct, msg) => {
+      document.getElementById('r-progress').style.width = pct + '%';
+      document.getElementById('r-msg').textContent = msg;
+    };
+    const setStatus = (type, text) => {
+      const s = document.getElementById('r-status');
+      s.className = `result-status status-${type}`;
+      s.textContent = text;
+    };
+
+    try {
+      btn.textContent = 'Extracting frames…';
+      setProgress(5, 'Sampling video frames…');
+      const { frames, timestamps } = await extractFrames(videoFile);
+      setProgress(15, `Extracted ${frames.length} frames — starting analysis…`);
+
+      // Chunk frames
+      const chunks = [];
+      for (let i = 0; i < frames.length; i += FRAMES_PER_CHUNK) {
+        chunks.push({ frames: frames.slice(i, i + FRAMES_PER_CHUNK), timestamps: timestamps.slice(i, i + FRAMES_PER_CHUNK) });
+      }
+
+      const allGlosses = [];
+      const allNotes = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        const pct = 15 + Math.round((i / chunks.length) * 70);
+        setProgress(pct, `Analysing chunk ${i + 1} of ${chunks.length}…`);
+        btn.textContent = `Chunk ${i + 1} / ${chunks.length}`;
+
+        if (i > 0) {
+          for (let s = CHUNK_DELAY_MS / 1000; s > 0; s--) {
+            setProgress(pct, `Waiting ${s}s before next chunk…`);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+
+        const result = await callAPI(chunks[i].frames, chunks[i].timestamps, BSL_PROMPT, i, chunks.length);
+        if (result.glossSequence) allGlosses.push(...result.glossSequence);
+        if (result.chunkNotes) allNotes.push(`[${formatTime(chunks[i].timestamps[0])}] ${result.chunkNotes}`);
+      }
+
+      // Synthesis
+      setProgress(88, 'Synthesising full transcription…');
+      btn.textContent = 'Synthesising…';
+
+      const synthContent = [{
+        type: 'text',
+        text: `Merge these sign observations from ${chunks.length} video chunks into a final transcription.\n\nObservations:\n${JSON.stringify(allGlosses, null, 2)}\n\nChunk notes:\n${allNotes.join('\n')}\n\nReturn final JSON now.`
+      }];
+
+      const synthResp = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          system: SYNTHESIS_PROMPT,
+          messages: [{ role: 'user', content: synthContent }]
+        })
+      });
+
+      let finalResult;
+      if (synthResp.ok) {
+        const synthData = await synthResp.json();
+        const synthText = synthData.content.map(b => b.text || '').join('');
+        const synthCleaned = synthText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        try { finalResult = JSON.parse(synthCleaned); }
+        catch {
+          const match = synthCleaned.match(/\{[\s\S]*\}/);
+          finalResult = match ? JSON.parse(match[0]) : null;
+        }
+      }
+
+      if (!finalResult) {
+        finalResult = {
+          glossSequence: allGlosses,
+          fullTranscription: allGlosses.map(g => g.translation).filter(Boolean).join(' '),
+          signingNotes: allNotes.join(' | '),
+          methodNotes: 'Synthesis unavailable — showing raw chunk results'
+        };
+      }
+
+      setProgress(100, 'Complete');
+      setStatus('done', `Done — ${finalResult.glossSequence?.length || 0} signs`);
+      renderResult(finalResult, frames.length);
+      btn.disabled = false;
+      btn.textContent = 'Run Again';
+
+    } catch (err) {
+      setStatus('error', 'Failed');
+      document.getElementById('r-body').innerHTML = `<div class="error-msg">${escHtml(err.message)}</div>`;
+      btn.disabled = false;
+      btn.textContent = 'Try Again';
+    }
+  });
+
+  function renderResult(result, frameCount) {
+    const glosses = result.glossSequence || [];
+    const highConf = glosses.filter(g => g.confidence === 'high').length;
+    const t0 = performance.now();
+
+    document.getElementById('r-body').innerHTML = `
+      <div class="stats-row">
+        <div class="stat"><div class="stat-label">Signs detected</div><div class="stat-value green">${glosses.length}</div></div>
+        <div class="stat"><div class="stat-label">High confidence</div><div class="stat-value ${highConf > 0 ? 'green' : 'amber'}">${highConf}</div></div>
+        <div class="stat"><div class="stat-label">Frames analysed</div><div class="stat-value">${frameCount}</div></div>
+      </div>
+
+      ${result.fullTranscription ? `
+        <div class="section-label">Full Transcription</div>
+        <div class="text-block">${escHtml(result.fullTranscription)}</div>
+      ` : ''}
+
+      ${glosses.length > 0 ? `
+        <div class="section-label" style="margin-top:20px">Sign Observations</div>
+        <div class="gloss-header"><span>Time</span><span>BSL Gloss</span><span>English</span><span>Conf</span></div>
+        <div class="gloss-timeline">
+          ${glosses.map(g => `
+            <div class="gloss-row">
+              <span class="gloss-ts">${g.time !== undefined ? formatTime(g.time) : '—'}</span>
+              <span class="gloss-sign">${escHtml(g.gloss || '—')}${g.nMFs ? `<div class="gloss-nmf">${escHtml(g.nMFs)}</div>` : ''}</span>
+              <span class="gloss-eng">${escHtml(g.translation || '—')}</span>
+              <span><span class="conf-badge conf-${g.confidence || 'low'}">${g.confidence || '?'}</span></span>
+            </div>`).join('')}
+        </div>
+      ` : '<div class="empty-state">No signs detected — check video quality and signer visibility</div>'}
+
+      ${result.signingNotes ? `
+        <div class="section-label" style="margin-top:20px">Signing Notes</div>
+        <div class="notes-block">${escHtml(result.signingNotes)}</div>
+      ` : ''}
+
+      ${result.methodNotes ? `
+        <div class="section-label" style="margin-top:12px">Method Notes</div>
+        <div class="notes-block">${escHtml(result.methodNotes)}</div>
+      ` : ''}
+    `;
+  }
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+  }
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>
