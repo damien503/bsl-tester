@@ -412,6 +412,7 @@ Return ONLY valid JSON, no markdown:
         }
 
         const result = await callAPI(chunks[i].frames, chunks[i].timestamps, BSL_PROMPT, i, chunks.length);
+        console.log('Chunk result:', JSON.stringify(result));
         if (result.glossSequence) allGlosses.push(...result.glossSequence);
         if (result.chunkNotes) allNotes.push(`[${formatTime(chunks[i].timestamps[0])}] ${result.chunkNotes}`);
       }
