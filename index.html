@@ -423,7 +423,19 @@ Return ONLY valid JSON, no markdown:
 
         const result = await callAPI(chunks[i].frames, chunks[i].timestamps, BSL_PROMPT, i, chunks.length);
         console.log('Chunk result:', JSON.stringify(result));
-        if (result.glossSequence) allGlosses.push(...result.glossSequence);
+        if (result.glossSequence) {
+          // Normalise field names — model sometimes uses 'sign' instead of 'gloss'
+          const normalised = result.glossSequence.map(g => ({
+            time: g.time ?? g.timestamp ?? g.startTime,
+            gloss: g.gloss || g.sign || g.bslGloss || g.bsl || '—',
+            translation: g.translation || g.english || g.meaning || '—',
+            confidence: g.confidence || g.conf || 'low',
+            nMFs: g.nMFs || g.nmf || g.nonManual || '',
+            notes: g.notes || ''
+          }));
+          console.log('Normalised glosses:', JSON.stringify(normalised.slice(0,2)));
+          allGlosses.push(...normalised);
+        }
         if (result.chunkNotes) allNotes.push(`[${formatTime(chunks[i].timestamps[0])}] ${result.chunkNotes}`);
       }
 
@@ -464,15 +476,18 @@ Return ONLY valid JSON, no markdown:
         }
       } catch(e) { finalResult = null; }
 
-      // Always fall back to raw chunk data if synthesis fails
-      if (!finalResult || !finalResult.glossSequence || finalResult.glossSequence.length === 0) {
+      // If synthesis lost sign data, restore from chunks
+      if (!finalResult || !finalResult.glossSequence || finalResult.glossSequence.length === 0 ||
+          finalResult.glossSequence.every(g => !g.gloss || g.gloss === '—')) {
+        console.log('Synthesis lost sign data, using raw chunks. validGlosses count:', validGlosses.length);
         finalResult = {
           glossSequence: validGlosses,
-          fullTranscription: allNotes.map(n => n.replace(/\[\d+:\d+\] /, '')).join(' '),
-          signingNotes: 'Showing raw chunk observations',
+          fullTranscription: finalResult?.fullTranscription || allNotes.map(n => n.replace(/\[\d+:\d+\] /, '')).join(' '),
+          signingNotes: finalResult?.signingNotes || 'Showing raw chunk observations',
           methodNotes: allNotes.join(' | ')
         };
       }
+      console.log('Final glossSequence sample:', JSON.stringify(finalResult.glossSequence?.slice(0,2)));
 
       setProgress(100, 'Complete');
       setStatus('done', `Done — ${finalResult.glossSequence?.length || 0} signs`);
