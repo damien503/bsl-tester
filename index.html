@@ -313,6 +313,7 @@ Return ONLY valid JSON, no markdown:
 
   // API call
   async function callAPI(frames, timestamps, systemPrompt, chunkIndex, totalChunks) {
+    console.log(`Calling API for chunk ${chunkIndex + 1}/${totalChunks} with ${frames.length} frames`);
     const content = [];
     content.push({
       type: 'text',
@@ -335,15 +336,24 @@ Return ONLY valid JSON, no markdown:
       })
     });
 
+    console.log(`Chunk ${chunkIndex + 1} response status:`, resp.status);
+
     if (!resp.ok) {
       const err = await resp.text();
+      console.error(`Chunk ${chunkIndex + 1} error:`, err);
       throw new Error(`API error ${resp.status}: ${err.slice(0, 300)}`);
     }
     const data = await resp.json();
-    const text = data.content.map(b => b.text || '').join('');
+    console.log(`Chunk ${chunkIndex + 1} raw response:`, JSON.stringify(data).slice(0, 500));
+    const text = data.content ? data.content.map(b => b.text || '').join('') : '';
+    console.log(`Chunk ${chunkIndex + 1} text:`, text.slice(0, 300));
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    try { return JSON.parse(cleaned); }
-    catch {
+    try {
+      const parsed = JSON.parse(cleaned);
+      console.log(`Chunk ${chunkIndex + 1} parsed:`, JSON.stringify(parsed).slice(0, 300));
+      return parsed;
+    } catch(e) {
+      console.error(`Chunk ${chunkIndex + 1} parse error:`, e.message, 'Text was:', cleaned.slice(0, 200));
       const match = cleaned.match(/\{[\s\S]*\}/);
       if (match) return JSON.parse(match[0]);
       throw new Error('Could not parse response JSON');
