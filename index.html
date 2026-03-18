@@ -416,44 +416,50 @@ Return ONLY valid JSON, no markdown:
         if (result.chunkNotes) allNotes.push(`[${formatTime(chunks[i].timestamps[0])}] ${result.chunkNotes}`);
       }
 
-      // Synthesis
+      // Synthesis — text only, no images
       setProgress(88, 'Synthesising full transcription…');
       btn.textContent = 'Synthesising…';
 
-      const synthContent = [{
-        type: 'text',
-        text: `Merge these sign observations from ${chunks.length} video chunks into a final transcription.\n\nObservations:\n${JSON.stringify(allGlosses, null, 2)}\n\nChunk notes:\n${allNotes.join('\n')}\n\nReturn final JSON now.`
-      }];
-
-      const synthResp = await fetch(API_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4096,
-          system: SYNTHESIS_PROMPT,
-          messages: [{ role: 'user', content: synthContent }]
-        })
-      });
+      // Filter out any empty gloss entries from chunks
+      const validGlosses = allGlosses.filter(g => g && g.gloss && g.gloss !== '—' && g.gloss !== '');
 
       let finalResult;
-      if (synthResp.ok) {
-        const synthData = await synthResp.json();
-        const synthText = synthData.content.map(b => b.text || '').join('');
-        const synthCleaned = synthText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        try { finalResult = JSON.parse(synthCleaned); }
-        catch {
-          const match = synthCleaned.match(/\{[\s\S]*\}/);
-          finalResult = match ? JSON.parse(match[0]) : null;
-        }
-      }
+      try {
+        const synthContent = [{
+          type: 'text',
+          text: `You are a BSL specialist. Here are sign observations from a video, collected in chunks:\n\n${JSON.stringify(validGlosses, null, 2)}\n\nChunk notes:\n${allNotes.join('\n')}\n\nReturn ONLY valid JSON with no markdown:\n{"glossSequence": [...same signs, cleaned and deduplicated...], "fullTranscription": "fluent English translation", "signingNotes": "style and fluency notes", "methodNotes": "confidence summary"}`
+        }];
 
-      if (!finalResult) {
+        const synthResp = await fetch(API_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4096,
+            system: 'You are a BSL specialist. Return only valid JSON, no markdown, no preamble.',
+            messages: [{ role: 'user', content: synthContent }]
+          })
+        });
+
+        if (synthResp.ok) {
+          const synthData = await synthResp.json();
+          const synthText = synthData.content.map(b => b.text || '').join('');
+          const synthCleaned = synthText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          try { finalResult = JSON.parse(synthCleaned); }
+          catch {
+            const match = synthCleaned.match(/\{[\s\S]*\}/);
+            finalResult = match ? JSON.parse(match[0]) : null;
+          }
+        }
+      } catch(e) { finalResult = null; }
+
+      // Always fall back to raw chunk data if synthesis fails
+      if (!finalResult || !finalResult.glossSequence || finalResult.glossSequence.length === 0) {
         finalResult = {
-          glossSequence: allGlosses,
-          fullTranscription: allGlosses.map(g => g.translation).filter(Boolean).join(' '),
-          signingNotes: allNotes.join(' | '),
-          methodNotes: 'Synthesis unavailable — showing raw chunk results'
+          glossSequence: validGlosses,
+          fullTranscription: allNotes.map(n => n.replace(/\[\d+:\d+\] /, '')).join(' '),
+          signingNotes: 'Showing raw chunk observations',
+          methodNotes: allNotes.join(' | ')
         };
       }
 
